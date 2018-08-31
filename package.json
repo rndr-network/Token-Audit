@@ -1,0 +1,24 @@
+{
+  "name": "render-token",
+  "version": "1.0.0",
+  "description": "Smart contracts for the Render Token",
+  "main": "index.js",
+  "scripts": {
+    "test": "scripts/test.sh"
+  },
+  "author": "Augusto Lemble, Matthew McClure, Victor Naumik",
+  "devDependencies": {
+    "ethereumjs-testrpc": "^4.1.1",
+    "openzeppelin-zos": "^1.9.1",
+    "truffle": "^3.4.7"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "chai": "^4.1.1",
+    "chai-as-promised": "^7.1.1",
+    "chai-bignumber": "^2.0.1",
+    "openzeppelin-solidity": "1.10.0",
+    "truffle-hdwallet-provider": "0.0.5",
+    "zos": "^1.0.0"
+  }
+}
