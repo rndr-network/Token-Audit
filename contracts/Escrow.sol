@@ -21,7 +21,7 @@ contract Escrow is Migratable, Ownable {
   // Emit the jobId along with the new balance of the job
   // Used on job creation, additional funding added to jobs, and job disbursal
   // Internal systems for assigning jobs will watch this event to determine balances available
-  event JobBalanceUpdate (string indexed _jobId, uint256 _balance);
+  event JobBalanceUpdate (string _jobId, uint256 _balance);
 
   /**
    * @dev Constructor
