@@ -1,7 +1,7 @@
 pragma solidity ^0.4.21;
 
-import "./Escrow.sol";
-import "../node_modules/openzeppelin-zos/contracts/token/ERC20/SafeERC20.sol";
+import { ERC20, SafeERC20 } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/SafeERC20.sol";
+import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
 
 /**
  * @title MigratableERC20

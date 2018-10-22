@@ -1,8 +1,10 @@
 pragma solidity ^0.4.24;
 
 // Escrow constract
-import "./Escrow.sol";
-import "./MigratableERC20.sol";
+import { Escrow } from "./Escrow.sol";
+import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
+import { MigratableERC20 } from "./MigratableERC20.sol";
+import { MintableToken } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/MintableToken.sol";
 
 /**
  * @title RenderToken
