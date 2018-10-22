@@ -1,4 +1,4 @@
-pragma solidity ^0.4.14;
+pragma solidity ^0.4.24;
 
 // Escrow constract
 import "./Escrow.sol";
@@ -19,8 +19,14 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
   // that come in to fund jobs
   address public escrowContractAddress;
 
+  // Emit new contract address when escrowContractAddress has been changed
+  event EscrowContractAddressUpdate(address escrowContractAddress);
+
+  // Emit information related to tokens being escrowed
+  event TokensEscrowed(address sender, string jobId, uint256 amount);
+
   /**
-   * @dev Constructor
+   * @dev Initailization
    * @param _owner because this contract uses proxies, owner must be passed in as a param
    */
   function initialize(address _owner, address _legacyToken) public isInitializer("RenderToken", "0") {
@@ -37,14 +43,17 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
    * @param _amount is the number of RNDR tokens being held in escrow
    */
   function holdInEscrow(string _jobID, uint256 _amount) public {
-    require(transfer(escrowContractAddress, _amount));
+    require(transfer(escrowContractAddress, _amount), "token transfer to escrow address failed");
     Escrow(escrowContractAddress).fundJob(_jobID, _amount);
+
+    emit TokensEscrowed(msg.sender, _jobID, _amount);
   }
 
   function _mint(address _to, uint256 _amount) internal {
-    require(_to != address(0));
+    require(_to != address(0), "_to address must not be null");
     totalSupply_ = totalSupply_.add(_amount);
     balances[_to] = balances[_to].add(_amount);
+
     emit Transfer(address(0), _to, _amount);
   }
 
@@ -56,7 +65,10 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
    * @param _escrowAddress see escrowContractAddress
   */
   function setEscrowContractAddress(address _escrowAddress) public onlyOwner {
+    require(_escrowAddress != address(0), "_escrowAddress must not be null");
     escrowContractAddress = _escrowAddress;
+
+    emit EscrowContractAddressUpdate(escrowContractAddress);
   }
 
 }
