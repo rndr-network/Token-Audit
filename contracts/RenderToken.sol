@@ -25,7 +25,7 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
   event EscrowContractAddressUpdate(address escrowContractAddress);
 
   // Emit information related to tokens being escrowed
-  event TokensEscrowed(address sender, string jobId, uint256 amount);
+  event TokensEscrowed(address indexed sender, string jobId, uint256 amount);
 
   /**
    * @dev Initailization

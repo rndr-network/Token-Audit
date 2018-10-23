@@ -21,11 +21,12 @@ contract Escrow is Migratable, Ownable {
   // This is the address with authority to call the disburseJob function
   address public disbursalAddress;
 
+  // Emit new disbursal address when disbursalAddress has been changed
+  event DisbursalAddressUpdate(address disbursalAddress);
   // Emit the jobId along with the new balance of the job
   // Used on job creation, additional funding added to jobs, and job disbursal
   // Internal systems for assigning jobs will watch this event to determine balances available
   event JobBalanceUpdate(string _jobId, uint256 _balance);
-
   // Emit new contract address when renderTokenAddress has been changed
   event RenderTokenAddressUpdate(address renderTokenAddress);
 
@@ -58,6 +59,8 @@ contract Escrow is Migratable, Ownable {
    */
   function changeDisbursalAddress(address _newDisbursalAddress) external onlyOwner {
     disbursalAddress = _newDisbursalAddress;
+
+    emit DisbursalAddressUpdate(disbursalAddress);
   }
 
   /**
