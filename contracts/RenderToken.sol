@@ -63,7 +63,12 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
    * @dev Set the address of the escrow contract
    *
    * This will dictate the contract that will hold tokens in escrow and keep
-   * a ledger of funds available for jobs
+   * a ledger of funds available for jobs.
+   * RNDR is still in its infancy, and changes may need to be made to this
+   * contract and / or the escrow contract. Including methods to update the
+   * addresses allows the contracts to update independently.
+   * If the escrow contract is ever migrated to another address for
+   * either added security or functionality, this will need to be called.
    * @param _escrowAddress see escrowContractAddress
   */
   function setEscrowContractAddress(address _escrowAddress) public onlyOwner {

@@ -1,9 +1,9 @@
 pragma solidity ^0.4.24;
 
+import { ERC20, SafeERC20 } from "../node_modules/openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
 import { Ownable } from "../node_modules/openzeppelin-zos/contracts/ownership/Ownable.sol";
 import { SafeMath } from "../node_modules/openzeppelin-zos/contracts/math/SafeMath.sol";
-import { StandardToken } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/StandardToken.sol";
 
 /**
  * @title Escrow
@@ -12,6 +12,7 @@ import { StandardToken } from "../node_modules/openzeppelin-zos/contracts/token/
  * and information on token allottment per job
  */
 contract Escrow is Migratable, Ownable {
+  using SafeERC20 for ERC20;
   using SafeMath for uint256;
 
   // This is a mapping of job IDs to the number of tokens allotted to the job
@@ -67,6 +68,9 @@ contract Escrow is Migratable, Ownable {
    * @dev Change the address allowances will be sent to after job completion
    *
    * Ideally, this will not be used, but is included as a failsafe.
+   * RNDR is still in its infancy, and changes may need to be made to this
+   * contract and / or the renderToken contract. Including methods to update the
+   * addresses allows the contracts to update independently.
    * If the RNDR token contract is ever migrated to another address for
    * either added security or functionality, this will need to be called.
    * @param _newRenderTokenAddress see renderTokenAddress
@@ -93,7 +97,7 @@ contract Escrow is Migratable, Ownable {
 
     for(uint256 i = 0; i < _recipients.length; i++) {
       jobBalances[_jobId] = jobBalances[_jobId].sub(_amounts[i]);
-      StandardToken(renderTokenAddress).transfer(_recipients[i], _amounts[i]);
+      ERC20(renderTokenAddress).safeTransfer(_recipients[i], _amounts[i]);
     }
 
     emit JobBalanceUpdate(_jobId, jobBalances[_jobId]);
@@ -107,8 +111,7 @@ contract Escrow is Migratable, Ownable {
    * @param _tokens the number of tokens sent by the artist to fund the job
    */
   function fundJob(string _jobId, uint256 _tokens) external {
-    // Jobs can only be created through the user / contract at
-    // the address stored in renderTokenAddress
+    // Jobs can only be created by the address stored in the renderTokenAddress variable
     require(msg.sender == renderTokenAddress, "message sender not authorized");
     jobBalances[_jobId] = jobBalances[_jobId].add(_tokens);
 
