@@ -151,7 +151,42 @@ contract('Render Token ', (accounts) => {
       let postDecrease = await this.renderToken.allowance(accounts[0], accounts[1]);
       postDecrease.should.be.bignumber.equal(0);
     });
-
   });
 
+  describe('Should allow tokens to be escrowed', () => {
+
+    it('should remove tokens from calling address', async () => {
+      let startBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+      await this.renderToken.holdInEscrow('jobGuid', startBalance, {from: accounts[1]});
+
+      let endBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+      assert.equal(endBalance, 0);
+    });
+  });
+
+  describe('Should allow token migration from existing contract', () => {
+
+    it('should burn old tokens and create new tokens', async () => {
+      let user = accounts[1];
+      let burnAddress = await this.renderToken.BURN_ADDRESS();
+
+      await this.legacyToken.mint(accounts[1], (500 * renderTokenDecimalFactor), {from: owner});
+      let oldTokenOriginalBalance = Number(await this.legacyToken.balanceOf(user));
+      let newTokenOriginalBalance = Number(await this.renderToken.balanceOf(user));
+      let originalBurntBalance = Number(await this.legacyToken.balanceOf(burnAddress));
+
+      await this.legacyToken.approve(this.renderTokenAddress, oldTokenOriginalBalance, {from: user});
+      let allowance = Number(await this.legacyToken.allowance(user, this.renderTokenAddress));
+      assert.equal(oldTokenOriginalBalance, allowance);
+
+      await this.renderToken.migrate({from: user});
+      let oldTokenNewBalance = Number(await this.legacyToken.balanceOf(user));
+      let newTokenNewBalance = Number(await this.renderToken.balanceOf(user));
+      let newBurntBalance = Number(await this.legacyToken.balanceOf(burnAddress));
+
+      assert.equal(originalBurntBalance + oldTokenOriginalBalance, newBurntBalance)
+      assert.equal(oldTokenNewBalance, 0);
+      assert.equal(newTokenOriginalBalance + oldTokenOriginalBalance, newTokenNewBalance);
+    });
+  });
 });
