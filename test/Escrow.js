@@ -93,15 +93,61 @@ contract('Escrow', (accounts) => {
 
     it('should assign tokens transferred to a job ID', async () => {
       await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      assert.equal(sampleJob1.cost, (await this.escrow.jobBalance(sampleJob1.id)).toString(), 'Job balance was not updated');
+      assert.equal(sampleJob1.cost, Number(await this.escrow.jobBalance(sampleJob1.id)), 'Job balance was not updated');
     });
 
     it('should allow job funds to be increased', async () => {
       await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
       // Sending job data a second time to increase the job's funds
       await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      assert.equal(sampleJob1.cost * 2, (await this.escrow.jobBalance(sampleJob1.id)).toString(), 'Job balance was not increased');
+      assert.equal(sampleJob1.cost * 2, Number(await this.escrow.jobBalance(sampleJob1.id)), 'Job balance was not increased');
     });
   });
 
+  describe('Should disburse RNDR tokens', () => {
+
+    it('should disburse tokens to a single', async () => {
+      let disbursalAddress = await this.escrow.disbursalAddress();
+      let originalMinerBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+
+      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      let originalJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+      assert.equal(sampleJob1.cost, originalJobBalance, 'Job balance was not updated');
+
+      await this.escrow.disburseJob(sampleJob1.id, [accounts[1]], [sampleJob1.cost], {from: disbursalAddress});
+      let newMinerBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+      let newJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+
+      assert.equal(newJobBalance, 0);
+      assert.equal(originalMinerBalance + originalJobBalance, newMinerBalance);
+    });
+
+    it('should disburse tokens to multiple miners', async () => {
+      let disbursalAddress = await this.escrow.disbursalAddress();
+      let originalMinerBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
+      let originalMinerBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
+      let originalMinerBalance3 = Number(await this.renderToken.balanceOf(accounts[3]));
+      let originalMinerBalance4 = Number(await this.renderToken.balanceOf(accounts[4]));
+
+      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      let originalJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+      assert.equal(sampleJob1.cost, originalJobBalance, 'Job balance was not updated');
+
+      let minerArray = [accounts[1], accounts[2], accounts[3], accounts[4]];
+      let paymentArray = [sampleJob1.cost / 4, sampleJob1.cost / 4, sampleJob1.cost / 4, sampleJob1.cost / 4]
+
+      await this.escrow.disburseJob(sampleJob1.id, minerArray, paymentArray, {from: disbursalAddress});
+      let newMinerBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
+      let newMinerBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
+      let newMinerBalance3 = Number(await this.renderToken.balanceOf(accounts[3]));
+      let newMinerBalance4 = Number(await this.renderToken.balanceOf(accounts[4]));
+      let newJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+
+      assert.equal(newJobBalance, 0);
+      assert.equal(originalMinerBalance1 + (originalJobBalance / 4), newMinerBalance1);
+      assert.equal(originalMinerBalance2 + (originalJobBalance / 4), newMinerBalance2);
+      assert.equal(originalMinerBalance3 + (originalJobBalance / 4), newMinerBalance3);
+      assert.equal(originalMinerBalance4 + (originalJobBalance / 4), newMinerBalance4);
+    });
+  });
 });
