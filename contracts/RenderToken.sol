@@ -4,14 +4,15 @@ pragma solidity ^0.4.24;
 import { Escrow } from "./Escrow.sol";
 import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
 import { MigratableERC20 } from "./MigratableERC20.sol";
-import { MintableToken } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/MintableToken.sol";
+import { Ownable } from "../node_modules/openzeppelin-zos/contracts/ownership/Ownable.sol";
+import { StandardToken } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/StandardToken.sol";
 
 /**
  * @title RenderToken
  * @dev ERC20 mintable token
  * The token will be minted by the crowdsale contract only
  */
-contract RenderToken is Migratable, MigratableERC20, MintableToken {
+contract RenderToken is Migratable, MigratableERC20, Ownable, StandardToken {
 
   string public constant name = "Render Token";
   string public constant symbol = "RNDR";
@@ -23,16 +24,17 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
 
   // Emit new contract address when escrowContractAddress has been changed
   event EscrowContractAddressUpdate(address escrowContractAddress);
-
   // Emit information related to tokens being escrowed
   event TokensEscrowed(address indexed sender, string jobId, uint256 amount);
+  // Emit information related to legacy tokens being migrated
+  event TokenMigration(address indexed receiver, uint256 amount);
 
   /**
    * @dev Initailization
    * @param _owner because this contract uses proxies, owner must be passed in as a param
    */
   function initialize(address _owner, address _legacyToken) public isInitializer("RenderToken", "0") {
-    MintableToken.initialize(_owner);
+    Ownable.initialize(_owner);
     MigratableERC20.initialize(_legacyToken);
   }
 
@@ -51,11 +53,20 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
     emit TokensEscrowed(msg.sender, _jobID, _amount);
   }
 
-  function _mint(address _to, uint256 _amount) internal {
+  /**
+   * @dev Mints new tokens equal to the amount of legacy tokens burned
+   *
+   * This function is called internally, but triggered by a user choosing to
+   * migrate their balance.
+   * @param _to is the address tokens will be sent to
+   * @param _amount is the number of RNDR tokens being sent to the address
+   */
+  function _mintMigratedTokens(address _to, uint256 _amount) internal {
     require(_to != address(0), "_to address must not be null");
     totalSupply_ = totalSupply_.add(_amount);
     balances[_to] = balances[_to].add(_amount);
 
+    emit TokenMigration(_to, _amount);
     emit Transfer(address(0), _to, _amount);
   }
 
@@ -70,7 +81,7 @@ contract RenderToken is Migratable, MigratableERC20, MintableToken {
    * If the escrow contract is ever migrated to another address for
    * either added security or functionality, this will need to be called.
    * @param _escrowAddress see escrowContractAddress
-  */
+   */
   function setEscrowContractAddress(address _escrowAddress) public onlyOwner {
     require(_escrowAddress != address(0), "_escrowAddress must not be null");
     escrowContractAddress = _escrowAddress;

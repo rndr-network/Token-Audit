@@ -1,4 +1,4 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.24;
 
 import { ERC20, SafeERC20 } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/SafeERC20.sol";
 import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
@@ -39,7 +39,7 @@ contract MigratableERC20 is Migratable {
   }
 
   /**
-   * @dev Migrates the a given amount of old-token balance to the new token contract
+   * @dev Migrates the given amount of old-token balance to the new token contract
    * @dev This function will burn a given amount of tokens from the old contract and mint the same amount in the new one
    * @param _amount uint256 representing the amount of tokens to be migrated
    */
@@ -54,7 +54,7 @@ contract MigratableERC20 is Migratable {
    * @param _to address the recipient that will receive the new minted tokens
    */
   function migrateTokenTo(address _to, uint256 _amount) public {
-    _mint(_to, _amount);
+    _mintMigratedTokens(_to, _amount);
     legacyToken.safeTransferFrom(msg.sender, BURN_ADDRESS, _amount);
   }
 
@@ -62,5 +62,5 @@ contract MigratableERC20 is Migratable {
    * @dev Internal minting function
    * This function must be overwritten by the implementation
    */
-  function _mint(address _to, uint256 _amount) internal;
+  function _mintMigratedTokens(address _to, uint256 _amount) internal;
 }

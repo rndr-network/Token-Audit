@@ -28,22 +28,27 @@ contract('Escrow', (accounts) => {
     const escrowContractOwner = accounts[0];
 
     // Create legacy token for migrations
-    legacyToken = await LegacyToken.new('Legacy Token', 'LTX', 18);
-    legacyTokenAddress = await legacyToken.address;
+    this.legacyToken = await LegacyToken.new('Legacy Token', 'LTX', 18, {from: owner});
+    legacyTokenAddress = await this.legacyToken.address;
 
     // Create and initialize Render Token contract
     this.renderToken = await RenderToken.new();
-    await this.renderToken.initialize(renderTokenContractOwner, legacyTokenAddress);
+    this.renderToken.initialize(renderTokenContractOwner, legacyTokenAddress);
     this.renderTokenAddress = await this.renderToken.address;
-  
+
     // Create and initialize Escrow contract
     this.escrow = await Escrow.new();
-    await this.escrow.initialize(escrowContractOwner, this.renderTokenAddress);
+    this.escrow.initialize(escrowContractOwner, this.renderTokenAddress);
     this.escrowAddress = await this.escrow.address;
 
     // Add funds to accounts
-    for (let account of accounts)
-      await this.renderToken.mint(account, 100 * renderTokenDecimalFactor);
+    let amount = 100 * renderTokenDecimalFactor;
+    for (let account of accounts) {
+      await this.legacyToken.mint(account, amount);
+      let balance = await this.legacyToken.balanceOf(account);
+      await this.legacyToken.approve(this.renderTokenAddress, balance, {from: account});
+      await this.renderToken.migrate({from: account});
+    }
 
     // Set escrow contract address
     await this.renderToken.setEscrowContractAddress(this.escrowAddress);
@@ -53,16 +58,14 @@ contract('Escrow', (accounts) => {
 
     it('should prevent non-owners from updating the disbursal address', async () => {
       let oldDisbursal = await this.escrow.disbursalAddress();
-      
-      // Getting invalid opcode error instead of revert
+
       await this.escrow.changeDisbursalAddress(accounts[1], {from: accounts[3]})
-        // .should.be.rejectedWith('revert');
-        .should.be.rejectedWith('invalid opcode');
+        .should.be.rejectedWith('revert');
     });
 
     it('should allow owner to update the disbursal address', async () => {
       let oldDisbursal = await this.escrow.disbursalAddress();
-      
+
       await this.escrow.changeDisbursalAddress(accounts[1]);
       let newDisbursal = this.escrow.disbursalAddress();
 
@@ -71,23 +74,21 @@ contract('Escrow', (accounts) => {
 
     it('should prevent non-owners from updating the Render Token address', async () => {
       let oldDisbursal = await this.escrow.renderTokenAddress();
-      
-      // Getting invalid opcode error instead of revert
+
       await this.escrow.changeRenderTokenAddress(accounts[1], {from: accounts[3]})
-        // .should.be.rejectedWith('revert');
-        .should.be.rejectedWith('invalid opcode');
+        .should.be.rejectedWith('revert');
     });
 
     it('should allow owner to update the Render Token address', async () => {
       let oldToken = await this.escrow.renderTokenAddress();
-      
+
       await this.escrow.changeRenderTokenAddress(accounts[1]);
       let newToken = this.escrow.renderTokenAddress();
 
       assert.notEqual(oldToken, newToken);
     });
   });
-  
+
   describe('Should receive RNDR tokens', () => {
 
     it('should assign tokens transferred to a job ID', async () => {
@@ -102,5 +103,5 @@ contract('Escrow', (accounts) => {
       assert.equal(sampleJob1.cost * 2, (await this.escrow.jobBalance(sampleJob1.id)).toString(), 'Job balance was not increased');
     });
   });
-  
+
 });
