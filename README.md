@@ -10,9 +10,9 @@ See config.example.js for formatting help
 
 
 ## Test
-You should have Ganache installed.
+Ganache and Truffle are required for tests.
 
-Then do:
+Run with:
 `npm test`
 
 or if you don't have bash (on Windows) do:
