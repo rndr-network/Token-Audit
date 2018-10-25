@@ -34,6 +34,8 @@ contract RenderToken is Migratable, MigratableERC20, Ownable, StandardToken {
    * @param _owner because this contract uses proxies, owner must be passed in as a param
    */
   function initialize(address _owner, address _legacyToken) public isInitializer("RenderToken", "0") {
+    require(_owner != address(0), "_owner must not be null");
+    require(_legacyToken != address(0), "_legacyToken must not be null");
     Ownable.initialize(_owner);
     MigratableERC20.initialize(_legacyToken);
   }

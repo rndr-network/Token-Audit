@@ -45,6 +45,8 @@ contract Escrow is Migratable, Ownable {
    * @param _renderTokenAddress see renderTokenAddress
    */
   function initialize (address _owner, address _renderTokenAddress) public isInitializer("Escrow", "0") {
+    require(_owner != address(0), "_owner must not be null");
+    require(_renderTokenAddress != address(0), "_renderTokenAddress must not be null");
     Ownable.initialize(_owner);
     disbursalAddress = _owner;
     renderTokenAddress = _renderTokenAddress;
