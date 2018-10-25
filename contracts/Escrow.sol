@@ -94,6 +94,7 @@ contract Escrow is Migratable, Ownable {
    */
   function disburseJob(string _jobId, address[] _recipients, uint256[] _amounts) external canDisburse {
     require(jobBalances[_jobId] > 0, "_jobId has no available balance");
+    require(_recipients.length == _amounts.length, "_recipients and _amounts must be the same length");
 
     for(uint256 i = 0; i < _recipients.length; i++) {
       jobBalances[_jobId] = jobBalances[_jobId].sub(_amounts[i]);
