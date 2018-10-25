@@ -10,7 +10,7 @@
   "devDependencies": {
     "ganache-cli": "^6.1.8",
     "openzeppelin-zos": "^1.9.1",
-    "truffle": "^3.4.7"
+    "truffle": "^4.1.14"
   },
   "license": "ISC",
   "dependencies": {

@@ -10,7 +10,14 @@ See config.example.js for formatting help
 
 
 ## Test
+You should have Ganache installed.
+
+Then do:
 `npm test`
+
+or if you don't have bash (on Windows) do:
+`truffle compile`
+`truffle test`
 
 
 **Airdrop contract is here:** https://github.com/jeualvarez/Token-Airdrop
