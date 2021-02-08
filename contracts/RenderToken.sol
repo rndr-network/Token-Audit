@@ -1,75 +1,65 @@
-pragma solidity ^0.4.24;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.7.6;
 
-// Escrow constract
-import { Escrow } from "./Escrow.sol";
-import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
-import { MigratableERC20 } from "./MigratableERC20.sol";
-import { Ownable } from "../node_modules/openzeppelin-zos/contracts/ownership/Ownable.sol";
-import { StandardToken } from "../node_modules/openzeppelin-zos/contracts/token/ERC20/StandardToken.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+interface IEscrow {
+  function fundUser(string calldata _userId, uint256 _tokens) external;
+}
 
 /**
  * @title RenderToken
  * @dev ERC20 mintable token
  * The token will be minted by the crowdsale contract only
  */
-contract RenderToken is Migratable, MigratableERC20, Ownable, StandardToken {
+contract RenderToken is ERC20Upgradeable, OwnableUpgradeable {
 
-  string public constant name = "Render Token";
-  string public constant symbol = "RNDR";
-  uint8 public constant decimals = 18;
-
-  // The address of the contract that manages job balances. Address is used for forwarding tokens
+  // The address of the contract that manages user balances. Address is used for forwarding tokens
   // that come in to fund jobs
   address public escrowContractAddress;
+  // Matic childChainManager
+  address public childChainManagerProxy;
 
   // Emit new contract address when escrowContractAddress has been changed
   event EscrowContractAddressUpdate(address escrowContractAddress);
   // Emit information related to tokens being escrowed
-  event TokensEscrowed(address indexed sender, string jobId, uint256 amount);
-  // Emit information related to legacy tokens being migrated
-  event TokenMigration(address indexed receiver, uint256 amount);
+  event TokensEscrowed(address indexed sender, string userId, uint256 amount);
+
+  /**
+   * @dev Calling initialize in logic implementation contract
+   */
+  constructor() {
+    initialize(address(1), address(1), "1", "1");
+  }
 
   /**
    * @dev Initailization
-   * @param _owner because this contract uses proxies, owner must be passed in as a param
+   * @param _owner Owner of the contract is able to change the Escrow address
+   * @param _childChainManagerProxy Matic Child Chain Manager Proxy address
    */
-  function initialize(address _owner, address _legacyToken) public isInitializer("RenderToken", "0") {
+  function initialize(address _owner, address _childChainManagerProxy, string memory _name, string memory _symbol) public initializer {
     require(_owner != address(0), "_owner must not be null");
-    require(_legacyToken != address(0), "_legacyToken must not be null");
-    Ownable.initialize(_owner);
-    MigratableERC20.initialize(_legacyToken);
+    require(_childChainManagerProxy != address(0), "_childChainManagerProxy must not be null");
+    __ERC20_init(_name, _symbol);
+    __Ownable_init_unchained();
+    OwnableUpgradeable.transferOwnership(_owner);
+    childChainManagerProxy = _childChainManagerProxy;
   }
 
   /**
-   * @dev Take tokens prior to beginning a job
+   * @dev Push tokens into an escrow 
    *
    * This function is called by the artist, and it will transfer tokens
-   * to a separate escrow contract to be held until the job is completed
-   * @param _jobID is the ID of the job used within the ORC backend
-   * @param _amount is the number of RNDR tokens being held in escrow
+   * to a separate escrow contract to be held
+   * @param _userID is the ID of the user
+   * @param _amount is the number of RNDR tokens being added to escrow
    */
-  function holdInEscrow(string _jobID, uint256 _amount) public {
+  function holdInEscrow(string calldata _userID, uint256 _amount) public {
     require(transfer(escrowContractAddress, _amount), "token transfer to escrow address failed");
-    Escrow(escrowContractAddress).fundJob(_jobID, _amount);
+    IEscrow(escrowContractAddress).fundUser(_userID, _amount);
 
-    emit TokensEscrowed(msg.sender, _jobID, _amount);
-  }
-
-  /**
-   * @dev Mints new tokens equal to the amount of legacy tokens burned
-   *
-   * This function is called internally, but triggered by a user choosing to
-   * migrate their balance.
-   * @param _to is the address tokens will be sent to
-   * @param _amount is the number of RNDR tokens being sent to the address
-   */
-  function _mintMigratedTokens(address _to, uint256 _amount) internal {
-    require(_to != address(0), "_to address must not be null");
-    totalSupply_ = totalSupply_.add(_amount);
-    balances[_to] = balances[_to].add(_amount);
-
-    emit TokenMigration(_to, _amount);
-    emit Transfer(address(0), _to, _amount);
+    emit TokensEscrowed(_msgSender(), _userID, _amount);
   }
 
   /**
@@ -91,4 +81,41 @@ contract RenderToken is Migratable, MigratableERC20, Ownable, StandardToken {
     emit EscrowContractAddressUpdate(escrowContractAddress);
   }
 
+  ///////////////////////////////////////
+  // Matic child token functions below //
+  ///////////////////////////////////////
+
+  // being proxified smart contract, most probably childChainManagerProxy contract's address
+  // is not going to change ever, but still, lets keep it 
+  function updateChildChainManager(address newChildChainManagerProxy) external onlyOwner {
+    require(newChildChainManagerProxy != address(0), "Bad ChildChainManagerProxy address");
+
+    childChainManagerProxy = newChildChainManagerProxy;
+  }
+
+  /**
+    * @notice called when token is deposited on root chain
+    * @dev Should be callable only by ChildChainManager
+    * Should handle deposit by minting the required amount for user
+    * Make sure minting is done only by this function
+    * @param user user address for whom deposit is being done
+    * @param depositData abi encoded amount
+    */
+  function deposit(address user, bytes calldata depositData)
+      external
+  {
+    require(_msgSender() == childChainManagerProxy, "You're not allowed to deposit");
+
+    uint256 amount = abi.decode(depositData, (uint256));
+    _mint(user, amount);
+  }
+
+  /**
+    * @notice called when user wants to withdraw tokens back to root chain
+    * @dev Should burn user's tokens. This transaction will be verified when exiting on root chain
+    * @param amount amount of tokens to withdraw
+    */
+  function withdraw(uint256 amount) external {
+    _burn(_msgSender(), amount);
+  }
 }

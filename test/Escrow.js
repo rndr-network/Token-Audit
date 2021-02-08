@@ -1,89 +1,82 @@
-
-const BigNumber = web3.BigNumber;
+const { BN, fromWei, toWei } = web3.utils;
+const { abi } = web3.eth;
 const Escrow = artifacts.require('Escrow');
-const LegacyToken = artifacts.require('LegacyToken');
 const RenderToken = artifacts.require('RenderToken');
+const { deployProxy } = require('@openzeppelin/truffle-upgrades');
 
 require('chai')
-  .use(require('chai-as-promised'))
-  .use(require('chai-bignumber')(BigNumber))
-  .should();
+    .use(require('chai-as-promised'))
+    .use(require('chai-bn')(BN))
+    .should();
 
+const name = "RenderToken";
+const symbol = "RNDR";
 
 contract('Escrow', (accounts) => {
-
   const owner = accounts[0];
-  let renderTokenDecimalFactor = 1000000000000000000;
+  const childChainManagerProxy = accounts[1];
+
   let sampleJob1 = {
     id: 'SampleJob1',
-    cost: 10 * renderTokenDecimalFactor
+    cost: new BN(toWei("10"))
   };
   let sampleJob2 = {
     id: 'SampleJob2',
-    cost: 20 * renderTokenDecimalFactor
+    cost: new BN(toWei("20"))
   };
 
   beforeEach(async () => {
     const renderTokenContractOwner = accounts[0];
     const escrowContractOwner = accounts[0];
 
-    // Create legacy token for migrations
-    this.legacyToken = await LegacyToken.new('Legacy Token', 'LTX', 18, {from: owner});
-    legacyTokenAddress = await this.legacyToken.address;
-
     // Create and initialize Render Token contract
-    this.renderToken = await RenderToken.new();
-    this.renderToken.initialize(renderTokenContractOwner, legacyTokenAddress);
-    this.renderTokenAddress = await this.renderToken.address;
+    renderToken = await deployProxy(RenderToken, [owner, childChainManagerProxy, name, symbol]);
+    renderTokenAddress = await renderToken.address;
 
     // Create and initialize Escrow contract
-    this.escrow = await Escrow.new();
-    this.escrow.initialize(escrowContractOwner, this.renderTokenAddress);
-    this.escrowAddress = await this.escrow.address;
+    escrow = await deployProxy(Escrow, [owner, renderToken.address]);
+    escrowAddress = await escrow.address;
 
     // Add funds to accounts
-    let amount = 100 * renderTokenDecimalFactor;
+    let amount = toWei("100");
     for (let account of accounts) {
-      await this.legacyToken.mint(account, amount);
-      let balance = await this.legacyToken.balanceOf(account);
-      await this.legacyToken.approve(this.renderTokenAddress, balance, {from: account});
-      await this.renderToken.migrate({from: account});
+      await renderToken.deposit(account, abi.encodeParameter('uint256', amount.toString()), {from: childChainManagerProxy})
     }
 
     // Set escrow contract address
-    await this.renderToken.setEscrowContractAddress(this.escrowAddress);
+    await renderToken.setEscrowContractAddress(escrowAddress);
   });
 
   describe('Should allow stored addresses to be changed', () => {
 
     it('should prevent non-owners from updating the disbursal address', async () => {
-      let oldDisbursal = await this.escrow.disbursalAddress();
+      let oldDisbursal = await escrow.disbursalAddress();
 
-      await this.escrow.changeDisbursalAddress(accounts[1], {from: accounts[3]})
+      await escrow.changeDisbursalAddress(accounts[1], {from: accounts[3]})
         .should.be.rejectedWith('revert');
     });
 
     it('should allow owner to update the disbursal address', async () => {
-      let oldDisbursal = await this.escrow.disbursalAddress();
+      let oldDisbursal = await escrow.disbursalAddress();
 
-      await this.escrow.changeDisbursalAddress(accounts[1]);
-      let newDisbursal = this.escrow.disbursalAddress();
+      await escrow.changeDisbursalAddress(accounts[1]);
+      let newDisbursal = escrow.disbursalAddress();
 
       assert.notEqual(oldDisbursal, newDisbursal);
     });
 
     it('should prevent non-owners from updating the Render Token address', async () => {
-      let oldDisbursal = await this.escrow.renderTokenAddress();
+      let oldDisbursal = await escrow.renderTokenAddress();
 
-      await this.escrow.changeRenderTokenAddress(accounts[1], {from: accounts[3]})
+      await escrow.changeRenderTokenAddress(accounts[1], {from: accounts[3]})
         .should.be.rejectedWith('revert');
     });
 
     it('should allow owner to update the Render Token address', async () => {
-      let oldToken = await this.escrow.renderTokenAddress();
+      let oldToken = await escrow.renderTokenAddress();
 
-      await this.escrow.changeRenderTokenAddress(accounts[1]);
-      let newToken = this.escrow.renderTokenAddress();
+      await escrow.changeRenderTokenAddress(accounts[1]);
+      let newToken = escrow.renderTokenAddress();
 
       assert.notEqual(oldToken, newToken);
     });
@@ -92,62 +85,65 @@ contract('Escrow', (accounts) => {
   describe('Should receive RNDR tokens', () => {
 
     it('should assign tokens transferred to a job ID', async () => {
-      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      assert.equal(sampleJob1.cost, Number(await this.escrow.jobBalance(sampleJob1.id)), 'Job balance was not updated');
+      await renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      assert.equal(sampleJob1.cost, Number(await escrow.userBalance(sampleJob1.id)), 'Job balance was not updated');
     });
 
     it('should allow job funds to be increased', async () => {
-      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      await renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
       // Sending job data a second time to increase the job's funds
-      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      assert.equal(sampleJob1.cost * 2, Number(await this.escrow.jobBalance(sampleJob1.id)), 'Job balance was not increased');
+      await renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      assert.equal(sampleJob1.cost * 2, Number(await escrow.userBalance(sampleJob1.id)), 'Job balance was not increased');
     });
   });
 
   describe('Should disburse RNDR tokens', () => {
 
     it('should disburse tokens to a single', async () => {
-      let disbursalAddress = await this.escrow.disbursalAddress();
-      let originalMinerBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+      let disbursalAddress = await escrow.disbursalAddress();
+      let originalMinerBalance = await renderToken.balanceOf(accounts[1]);
 
-      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      let originalJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
-      assert.equal(sampleJob1.cost, originalJobBalance, 'Job balance was not updated');
+      await renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      let originalUserBalance = await escrow.userBalance(sampleJob1.id);
+      assert.equal(sampleJob1.cost.toString(), originalUserBalance.toString(), 'Job balance was not updated');
 
-      await this.escrow.disburseJob(sampleJob1.id, [accounts[1]], [sampleJob1.cost], {from: disbursalAddress});
-      let newMinerBalance = Number(await this.renderToken.balanceOf(accounts[1]));
-      let newJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+      await escrow.disburseFunds(sampleJob1.id, [accounts[1]], [sampleJob1.cost], {from: disbursalAddress});
+      let newMinerBalance = await renderToken.balanceOf(accounts[1]);
+      let newUserBalance = await escrow.userBalance(sampleJob1.id);
 
-      assert.equal(newJobBalance, 0);
-      assert.equal(originalMinerBalance + originalJobBalance, newMinerBalance);
+      assert.equal(newUserBalance.toString(), "0");
+      assert.equal(originalMinerBalance.add(originalUserBalance).toString(), newMinerBalance.toString());
     });
 
     it('should disburse tokens to multiple miners', async () => {
-      let disbursalAddress = await this.escrow.disbursalAddress();
-      let originalMinerBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
-      let originalMinerBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
-      let originalMinerBalance3 = Number(await this.renderToken.balanceOf(accounts[3]));
-      let originalMinerBalance4 = Number(await this.renderToken.balanceOf(accounts[4]));
+      let disbursalAddress = await escrow.disbursalAddress();
+      let originalMinerBalance1 = await renderToken.balanceOf(accounts[1]);
+      let originalMinerBalance2 = await renderToken.balanceOf(accounts[2]);
+      let originalMinerBalance3 = await renderToken.balanceOf(accounts[3]);
+      let originalMinerBalance4 = await renderToken.balanceOf(accounts[4]);
 
-      await this.renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
-      let originalJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
-      assert.equal(sampleJob1.cost, originalJobBalance, 'Job balance was not updated');
+      await renderToken.holdInEscrow(sampleJob1.id, sampleJob1.cost, {from: accounts[0]});
+      let originalUserBalance = await escrow.userBalance(sampleJob1.id);
+      assert.equal(sampleJob1.cost.toString(), originalUserBalance.toString(), 'Job balance was not updated');
 
       let minerArray = [accounts[1], accounts[2], accounts[3], accounts[4]];
-      let paymentArray = [sampleJob1.cost / 4, sampleJob1.cost / 4, sampleJob1.cost / 4, sampleJob1.cost / 4]
+      let paymentArray = [sampleJob1.cost.div(new BN(4)),
+                          sampleJob1.cost.div(new BN(4)),
+                          sampleJob1.cost.div(new BN(4)),
+                          sampleJob1.cost.div(new BN(4))]
 
-      await this.escrow.disburseJob(sampleJob1.id, minerArray, paymentArray, {from: disbursalAddress});
-      let newMinerBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
-      let newMinerBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
-      let newMinerBalance3 = Number(await this.renderToken.balanceOf(accounts[3]));
-      let newMinerBalance4 = Number(await this.renderToken.balanceOf(accounts[4]));
-      let newJobBalance = Number(await this.escrow.jobBalance(sampleJob1.id));
+      await escrow.disburseFunds(sampleJob1.id, minerArray, paymentArray, {from: disbursalAddress});
+      let newMinerBalance1 = await renderToken.balanceOf(accounts[1]);
+      let newMinerBalance2 = await renderToken.balanceOf(accounts[2]);
+      let newMinerBalance3 = await renderToken.balanceOf(accounts[3]);
+      let newMinerBalance4 = await renderToken.balanceOf(accounts[4]);
+      let newUserBalance = await escrow.userBalance(sampleJob1.id);
 
-      assert.equal(newJobBalance, 0);
-      assert.equal(originalMinerBalance1 + (originalJobBalance / 4), newMinerBalance1);
-      assert.equal(originalMinerBalance2 + (originalJobBalance / 4), newMinerBalance2);
-      assert.equal(originalMinerBalance3 + (originalJobBalance / 4), newMinerBalance3);
-      assert.equal(originalMinerBalance4 + (originalJobBalance / 4), newMinerBalance4);
+      assert.equal(newUserBalance.toString(), "0");
+      assert.equal(originalMinerBalance1.add(originalUserBalance.div(new BN(4))).toString(), newMinerBalance1.toString());
+      assert.equal(originalMinerBalance2.add(originalUserBalance.div(new BN(4))).toString(), newMinerBalance2.toString());
+      assert.equal(originalMinerBalance3.add(originalUserBalance.div(new BN(4))).toString(), newMinerBalance3.toString());
+      assert.equal(originalMinerBalance4.add(originalUserBalance.div(new BN(4))).toString(), newMinerBalance4.toString());
     });
   });
 });

@@ -1,8 +1,0 @@
-{
-  "name": "rendertoken",
-  "version": "0.1.0",
-  "contracts": {
-    "RenderToken": "RenderToken",
-    "Escrow": "Escrow"
-  }
-}

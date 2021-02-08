@@ -1,18 +1,22 @@
-
-const BigNumber = web3.BigNumber;
+const { BN } = web3.utils;
+const { abi } = web3.eth;
 const Escrow = artifacts.require('Escrow');
-const LegacyToken = artifacts.require('LegacyToken');
 const RenderToken = artifacts.require('RenderToken');
+const { deployProxy } = require('@openzeppelin/truffle-upgrades');
 
 require('chai')
-  .use(require('chai-as-promised'))
-  .use(require('chai-bignumber')(BigNumber))
-  .should();
+    .use(require('chai-as-promised'))
+    .use(require('chai-bn')(BN))
+    .should();
 
+
+const name = "RenderToken";
+const symbol = "RNDR";
 
 contract('Render Token ', (accounts) => {
-
   const owner = accounts[0];
+  const childChainManagerProxy = accounts[1];
+
   let renderTokenDecimalFactor = 1000000000000000000;
   let sampleJob1 = {
     id: 'SampleJob1',
@@ -27,44 +31,35 @@ contract('Render Token ', (accounts) => {
     const renderTokenContractOwner = accounts[0];
     const escrowContractOwner = accounts[0];
 
-    // Create legacy token for migrations
-    this.legacyToken = await LegacyToken.new('Legacy Token', 'LTX', 18, {from: owner});
-    legacyTokenAddress = await this.legacyToken.address;
-
     // Create and initialize Render Token contract
-    this.renderToken = await RenderToken.new();
-    this.renderToken.initialize(renderTokenContractOwner, legacyTokenAddress);
-    this.renderTokenAddress = await this.renderToken.address;
+    renderToken = await deployProxy(RenderToken, [owner, childChainManagerProxy, name, symbol]);
+    renderTokenAddress = await renderToken.address;
 
     // Create and initialize Escrow contract
-    this.escrow = await Escrow.new();
-    this.escrow.initialize(escrowContractOwner, this.renderTokenAddress);
-    this.escrowAddress = await this.escrow.address;
+    escrow = await deployProxy(Escrow, [owner, renderToken.address]);
+    escrowAddress = await escrow.address;
 
     // Add funds to accounts
     let amount = 100 * renderTokenDecimalFactor;
     for (let account of accounts) {
-      await this.legacyToken.mint(account, amount);
-      let balance = await this.legacyToken.balanceOf(account);
-      await this.legacyToken.approve(this.renderTokenAddress, balance, {from: account});
-      await this.renderToken.migrate({from: account});
+      await renderToken.deposit(account, abi.encodeParameter('uint256', amount.toString()), {from: childChainManagerProxy})
     }
 
     // Set escrow contract address
-    await this.renderToken.setEscrowContractAddress(this.escrowAddress);
+    await renderToken.setEscrowContractAddress(escrowAddress);
   });
 
   describe('Should allow valid transfers of RNDR tokens', () => {
 
     it('should return correct balances after transfer', async () => {
-      let startBalance0 = Number(await this.renderToken.balanceOf(accounts[0]));
-      let startBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
+      let startBalance0 = Number(await renderToken.balanceOf(accounts[0]));
+      let startBalance1 = Number(await renderToken.balanceOf(accounts[1]));
 
       let transferAmount = 100;
-      await this.renderToken.transfer(accounts[1], transferAmount);
+      await renderToken.transfer(accounts[1], transferAmount);
 
-      let endBalance0 = Number(await this.renderToken.balanceOf(accounts[0]));
-      let endBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
+      let endBalance0 = Number(await renderToken.balanceOf(accounts[0]));
+      let endBalance1 = Number(await renderToken.balanceOf(accounts[1]));
 
       assert.equal(startBalance0 - transferAmount, endBalance0);
       assert.equal(startBalance1 + transferAmount, endBalance1);
@@ -72,26 +67,26 @@ contract('Render Token ', (accounts) => {
 
     it('should throw an error when trying to transfer more than balance', async () => {
       let sender = accounts[3];
-      let balance = Number(await this.renderToken.balanceOf(sender));
+      let balance = Number(await renderToken.balanceOf(sender));
 
       let transferAmount = balance * 2;
 
-      await this.renderToken.transfer(accounts[2], transferAmount, {from: sender})
-        .should.be.rejectedWith('revert');
+      await renderToken.transfer(accounts[2], transferAmount, {from: sender})
+        .should.be.rejectedWith('overflow');
     });
 
     it('should return correct balances after transfering from another account', async () => {
-      let startBalance0 = Number(await this.renderToken.balanceOf(accounts[0]));
-      let startBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
-      let startBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
+      let startBalance0 = Number(await renderToken.balanceOf(accounts[0]));
+      let startBalance1 = Number(await renderToken.balanceOf(accounts[1]));
+      let startBalance2 = Number(await renderToken.balanceOf(accounts[2]));
 
       let approvalAmount = 100;
-      await this.renderToken.approve(accounts[1], approvalAmount);
-      await this.renderToken.transferFrom(accounts[0], accounts[2], approvalAmount, {from: accounts[1]});
+      await renderToken.approve(accounts[1], approvalAmount);
+      await renderToken.transferFrom(accounts[0], accounts[2], approvalAmount, {from: accounts[1]});
 
-      let endBalance0 = Number(await this.renderToken.balanceOf(accounts[0]));
-      let endBalance1 = Number(await this.renderToken.balanceOf(accounts[1]));
-      let endBalance2 = Number(await this.renderToken.balanceOf(accounts[2]));
+      let endBalance0 = Number(await renderToken.balanceOf(accounts[0]));
+      let endBalance1 = Number(await renderToken.balanceOf(accounts[1]));
+      let endBalance2 = Number(await renderToken.balanceOf(accounts[2]));
 
       assert.equal(startBalance0 - approvalAmount, endBalance0);
       assert.equal(startBalance1, endBalance1);
@@ -100,20 +95,20 @@ contract('Render Token ', (accounts) => {
 
     it('should throw an error when trying to transfer more than allowed', async () => {
       let approvalAmount = 100;
-      await this.renderToken.approve(accounts[1], approvalAmount);
+      await renderToken.approve(accounts[1], approvalAmount);
 
-      await this.renderToken.transferFrom(accounts[0], accounts[2], (approvalAmount * 2), {from: accounts[1]})
+      await renderToken.transferFrom(accounts[0], accounts[2], (approvalAmount * 2), {from: accounts[1]})
         .should.be.rejectedWith('revert');
     });
 
     it('should throw an error when trying to transfer to 0x0', async () => {
-      await this.renderToken.transfer(0x0, 100)
+      await renderToken.transfer("0x0000000000000000000000000000000000000000", 100)
         .should.be.rejectedWith('revert');
     });
 
     it('should throw an error when trying to transferFrom to 0x0', async () => {
-      await this.renderToken.approve(accounts[1], 100);
-      await this.renderToken.transferFrom(accounts[0], 0x0, 100, { from: accounts[1] })
+      await renderToken.approve(accounts[1], 100);
+      await renderToken.transferFrom(accounts[0], "0x0000000000000000000000000000000000000000", 100, { from: accounts[1] })
         .should.be.rejectedWith('revert');
     });
   });
@@ -122,71 +117,45 @@ contract('Render Token ', (accounts) => {
   describe('Should maintain a record of allowances', () => {
 
     it('should return the correct allowance amount after approval', async () => {
-      await this.renderToken.approve(accounts[1], 100);
-      let allowance = await this.renderToken.allowance(accounts[0], accounts[1]);
+      await renderToken.approve(accounts[1], 100);
+      let allowance = await renderToken.allowance(accounts[0], accounts[1]);
 
       assert.equal(allowance, 100);
     });
 
     it('should allow updates to allowances', async () => {
-      let startApproval = await this.renderToken.allowance(accounts[0], accounts[1]);
+      let startApproval = await renderToken.allowance(accounts[0], accounts[1]);
       assert.equal(startApproval, 0);
 
-      await this.renderToken.increaseApproval(accounts[1], 50);
-      let postIncrease = await this.renderToken.allowance(accounts[0], accounts[1]);
-      startApproval.plus(50).should.be.bignumber.equal(postIncrease);
+      await renderToken.increaseAllowance(accounts[1], 50);
+      let postIncrease = await renderToken.allowance(accounts[0], accounts[1]);
+      startApproval.add(new BN(50)).should.be.bignumber.equal(postIncrease);
 
-      await this.renderToken.decreaseApproval(accounts[1], 10);
-      let postDecrease = await this.renderToken.allowance(accounts[0], accounts[1]);
-      postIncrease.minus(10).should.be.bignumber.equal(postDecrease);
+      await renderToken.decreaseAllowance(accounts[1], 10);
+      let postDecrease = await renderToken.allowance(accounts[0], accounts[1]);
+      postIncrease.sub(new BN(10)).should.be.bignumber.equal(postDecrease);
     });
 
-    it('should increase by 50 then set to 0 when decreasing by more than 50', async () => {
-      let startApproval = await this.renderToken.allowance(accounts[0], accounts[1]);
+    it('should increase by 50 then set to 0 by decreasing', async () => {
+      let startApproval = await renderToken.allowance(accounts[0], accounts[1]);
       assert.equal(startApproval, 0);
 
-      await this.renderToken.approve(accounts[1], 50);
-      await this.renderToken.decreaseApproval(accounts[1], 60);
+      await renderToken.approve(accounts[1], 50);
+      await renderToken.decreaseAllowance(accounts[1], 50);
 
-      let postDecrease = await this.renderToken.allowance(accounts[0], accounts[1]);
-      postDecrease.should.be.bignumber.equal(0);
+      let postDecrease = await renderToken.allowance(accounts[0], accounts[1]);
+      postDecrease.should.be.bignumber.equal("0");
     });
   });
 
   describe('Should allow tokens to be escrowed', () => {
 
     it('should remove tokens from calling address', async () => {
-      let startBalance = Number(await this.renderToken.balanceOf(accounts[1]));
-      await this.renderToken.holdInEscrow('jobGuid', startBalance, {from: accounts[1]});
+      let startBalance = await renderToken.balanceOf(accounts[1]);
+      await renderToken.holdInEscrow('userId', startBalance, {from: accounts[1]});
 
-      let endBalance = Number(await this.renderToken.balanceOf(accounts[1]));
+      let endBalance = await renderToken.balanceOf(accounts[1]);
       assert.equal(endBalance, 0);
-    });
-  });
-
-  describe('Should allow token migration from existing contract', () => {
-
-    it('should burn old tokens and create new tokens', async () => {
-      let user = accounts[1];
-      let burnAddress = await this.renderToken.BURN_ADDRESS();
-
-      await this.legacyToken.mint(accounts[1], (500 * renderTokenDecimalFactor), {from: owner});
-      let oldTokenOriginalBalance = Number(await this.legacyToken.balanceOf(user));
-      let newTokenOriginalBalance = Number(await this.renderToken.balanceOf(user));
-      let originalBurntBalance = Number(await this.legacyToken.balanceOf(burnAddress));
-
-      await this.legacyToken.approve(this.renderTokenAddress, oldTokenOriginalBalance, {from: user});
-      let allowance = Number(await this.legacyToken.allowance(user, this.renderTokenAddress));
-      assert.equal(oldTokenOriginalBalance, allowance);
-
-      await this.renderToken.migrate({from: user});
-      let oldTokenNewBalance = Number(await this.legacyToken.balanceOf(user));
-      let newTokenNewBalance = Number(await this.renderToken.balanceOf(user));
-      let newBurntBalance = Number(await this.legacyToken.balanceOf(burnAddress));
-
-      assert.equal(originalBurntBalance + oldTokenOriginalBalance, newBurntBalance)
-      assert.equal(oldTokenNewBalance, 0);
-      assert.equal(newTokenOriginalBalance + oldTokenOriginalBalance, newTokenNewBalance);
     });
   });
 });

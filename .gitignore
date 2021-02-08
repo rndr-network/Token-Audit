@@ -2,5 +2,4 @@ node_modules
 build
 npm-debug.log
 config.js
-zos.local.json
-zos.development.json
+package-lock.json

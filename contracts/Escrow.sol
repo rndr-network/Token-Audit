@@ -1,42 +1,49 @@
-pragma solidity ^0.4.24;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.7.6;
 
-import { ERC20, SafeERC20 } from "../node_modules/openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
-import { Migratable } from "../node_modules/zos-lib/contracts/migrations/Migratable.sol";
-import { Ownable } from "../node_modules/openzeppelin-zos/contracts/ownership/Ownable.sol";
-import { SafeMath } from "../node_modules/openzeppelin-zos/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 
 /**
  * @title Escrow
  * @dev Escrow contract that works with RNDR token
  * This contract holds tokens while render jobs are being completed
- * and information on token allottment per job
+ * and information on token allottment per user
  */
-contract Escrow is Migratable, Ownable {
-  using SafeERC20 for ERC20;
-  using SafeMath for uint256;
+contract Escrow is OwnableUpgradeable {
+  using SafeERC20Upgradeable for IERC20Upgradeable;
+  using SafeMathUpgradeable for uint256;
 
-  // This is a mapping of job IDs to the number of tokens allotted to the job
-  mapping(string => uint256) private jobBalances;
+  // This is a mapping of user IDs to the number of tokens held in escrow
+  mapping(string => uint256) private userBalances;
   // This is the address of the render token contract
   address public renderTokenAddress;
-  // This is the address with authority to call the disburseJob function
+  // This is the address with authority to call the disburseFunds function
   address public disbursalAddress;
 
   // Emit new disbursal address when disbursalAddress has been changed
   event DisbursalAddressUpdate(address disbursalAddress);
-  // Emit the jobId along with the new balance of the job
-  // Used on job creation, additional funding added to jobs, and job disbursal
-  // Internal systems for assigning jobs will watch this event to determine balances available
-  event JobBalanceUpdate(string _jobId, uint256 _balance);
+  // Emit the userId along with the new balance of the user escrow
+  // Internal systems will watch this event to determine balances available
+  event UserBalanceUpdate(string _userId, uint256 _balance);
   // Emit new contract address when renderTokenAddress has been changed
   event RenderTokenAddressUpdate(address renderTokenAddress);
 
   /**
-   * @dev Modifier to check if the message sender can call the disburseJob function
+   * @dev Modifier to check if the message sender can call the disburseFunds function
    */
   modifier canDisburse() {
-    require(msg.sender == disbursalAddress, "message sender not authorized to disburse funds");
+    require(_msgSender() == disbursalAddress, "message sender not authorized to disburse funds");
     _;
+  }
+
+  /**
+   * @dev Calling initialize in logic implementation contract
+   */
+  constructor() {
+    initialize(address(1), address(1));
   }
 
   /**
@@ -44,10 +51,11 @@ contract Escrow is Migratable, Ownable {
    * @param _owner because this contract uses proxies, owner must be passed in as a param
    * @param _renderTokenAddress see renderTokenAddress
    */
-  function initialize (address _owner, address _renderTokenAddress) public isInitializer("Escrow", "0") {
+  function initialize (address _owner, address _renderTokenAddress) public initializer {
     require(_owner != address(0), "_owner must not be null");
     require(_renderTokenAddress != address(0), "_renderTokenAddress must not be null");
-    Ownable.initialize(_owner);
+    __Ownable_init();
+    OwnableUpgradeable.transferOwnership(_owner);
     disbursalAddress = _owner;
     renderTokenAddress = _renderTokenAddress;
   }
@@ -56,7 +64,7 @@ contract Escrow is Migratable, Ownable {
    * @dev Change the address authorized to distribute tokens for completed jobs
    *
    * Because there are no on-chain details to indicate who performed a render, an outside
-   * system must call the disburseJob function with the information needed to properly
+   * system must call the disburseFunds function with the information needed to properly
    * distribute tokens. This function updates the address with the authority to perform distributions
    * @param _newDisbursalAddress see disbursalAddress
    */
@@ -89,45 +97,45 @@ contract Escrow is Migratable, Ownable {
    *
    * This can only be called by the disbursalAddress, an accound owned
    * by OTOY, and it provides the number of tokens to send to each node
-   * @param _jobId the ID of the job used in the jobBalances mapping
+   * @param _userId the ID of the user used in the userBalances mapping
    * @param _recipients the address(es) of the nodes that performed rendering
    * @param _amounts the amount(s) to send to each address. These must be in the same
    * order as the recipient addresses
    */
-  function disburseJob(string _jobId, address[] _recipients, uint256[] _amounts) external canDisburse {
-    require(jobBalances[_jobId] > 0, "_jobId has no available balance");
+  function disburseFunds(string calldata _userId, address[] calldata _recipients, uint256[] calldata _amounts) external canDisburse {
+    require(userBalances[_userId] > 0, "_userId has no available balance");
     require(_recipients.length == _amounts.length, "_recipients and _amounts must be the same length");
 
     for(uint256 i = 0; i < _recipients.length; i++) {
-      jobBalances[_jobId] = jobBalances[_jobId].sub(_amounts[i]);
-      ERC20(renderTokenAddress).safeTransfer(_recipients[i], _amounts[i]);
+      userBalances[_userId] = userBalances[_userId].sub(_amounts[i]);
+      IERC20Upgradeable(renderTokenAddress).safeTransfer(_recipients[i], _amounts[i]);
     }
 
-    emit JobBalanceUpdate(_jobId, jobBalances[_jobId]);
+    emit UserBalanceUpdate(_userId, userBalances[_userId]);
   }
 
   /**
-   * @dev Add RNDR tokens to a job
+   * @dev Add RNDR tokens to a user escrow balance
    *
    * This can only be called by a function on the RNDR token contract
-   * @param _jobId the ID of the job used in the jobBalances mapping
-   * @param _tokens the number of tokens sent by the artist to fund the job
+   * @param _userId the ID of the uesr used in the userBalances mapping
+   * @param _tokens the number of tokens sent by the artist
    */
-  function fundJob(string _jobId, uint256 _tokens) external {
-    // Jobs can only be created by the address stored in the renderTokenAddress variable
-    require(msg.sender == renderTokenAddress, "message sender not authorized");
-    jobBalances[_jobId] = jobBalances[_jobId].add(_tokens);
+  function fundUser(string calldata _userId, uint256 _tokens) external {
+    // This function can only be called by the address stored in the renderTokenAddress variable
+    require(_msgSender() == renderTokenAddress, "message sender not authorized");
+    userBalances[_userId] = userBalances[_userId].add(_tokens);
 
-    emit JobBalanceUpdate(_jobId, jobBalances[_jobId]);
+    emit UserBalanceUpdate(_userId, userBalances[_userId]);
   }
 
   /**
-   * @dev See the tokens available for a job
+   * @dev See the tokens available in user escrow
    *
-   * @param _jobId the ID used to lookup the job balance
+   * @param _userId the ID used to lookup the user escrow balance
    */
-  function jobBalance(string _jobId) external view returns(uint256) {
-    return jobBalances[_jobId];
+  function userBalance(string calldata _userId) external view returns(uint256) {
+    return userBalances[_userId];
   }
 
 }

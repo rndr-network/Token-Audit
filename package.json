@@ -1,24 +1,24 @@
 {
-  "name": "render-token",
+  "name": "render-token-matic",
   "version": "1.0.0",
-  "description": "Smart contracts for the Render Token",
+  "description": "Smart contracts for the Render Token - matic network",
   "main": "index.js",
   "scripts": {
     "test": "scripts/test.sh"
   },
-  "author": "Augusto Lemble, Matthew McClure, Victor Naumik",
+  "author": "Matthew McClure, Victor Naumik",
   "devDependencies": {
+    "@openzeppelin/truffle-upgrades": "^1.5.0",
     "ganache-cli": "^6.1.8",
-    "openzeppelin-zos": "^1.9.1",
     "truffle": "^4.1.14"
   },
   "license": "ISC",
   "dependencies": {
+    "@openzeppelin/contracts": "^3.4.0-solc-0.7",
+    "@openzeppelin/contracts-upgradeable": "^3.4.0-solc-0.7-2",
     "chai": "^4.1.1",
     "chai-as-promised": "^7.1.1",
-    "chai-bignumber": "^2.0.1",
-    "openzeppelin-solidity": "1.10.0",
-    "truffle-hdwallet-provider": "0.0.5",
-    "zos": "^1.0.0"
+    "chai-bn": "^0.2.1",
+    "truffle-hdwallet-provider": "0.0.5"
   }
 }

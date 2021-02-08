@@ -7,7 +7,7 @@ module.exports = {
   networks: {
     development: {
       host: 'localhost',
-      port: 8545,
+      port: 7545,
       network_id: '*'
     },
     local: {
@@ -19,5 +19,17 @@ module.exports = {
       provider: () => new HDWalletProvider(mnemonic, `https://ropsten.infura.io/${infuraApiKey}`),
       network_id: 3
     }
+  },
+  compilers: {
+    solc: {
+      version: "0.7.6",    // Fetch exact version from solc-bin (default: truffle's version)
+      settings: {
+        optimizer: {
+          enabled: true,
+          runs: 9999,   // Optimize for how many times you intend to run the code
+          }
+      }
+    }
   }
+
 };
